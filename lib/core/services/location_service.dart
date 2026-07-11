@@ -15,7 +15,7 @@ class LocationService {
     }
     return Geolocator.getCurrentPosition(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.balanced,
+        accuracy: LocationAccuracy.medium,
       ),
     );
   }

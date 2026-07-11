@@ -10,8 +10,9 @@ class ConnectivityService {
 
   void listen(Future<void> Function() syncPending) {
     _subscription = changes.listen((results) {
-      if (results.any((result) => result != ConnectivityResult.none))
+      if (results.any((result) => result != ConnectivityResult.none)) {
         syncPending();
+      }
     });
   }
 
