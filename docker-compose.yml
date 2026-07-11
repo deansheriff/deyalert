@@ -1,0 +1,23 @@
+services:
+  api:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: dey_alert
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - dey_alert_pgdata:/var/lib/postgresql/data
+
+volumes:
+  dey_alert_pgdata:
