@@ -32,7 +32,7 @@ flutter pub get
 flutter run \
   --dart-define=API_BASE_URL=http://10.0.2.2:8000 \
   --dart-define=SUPABASE_URL=https://your-project.supabase.co \
-  --dart-define=SUPABASE_ANON_KEY=your-publishable-key \
+  --dart-define=SUPABASE_PUBLISHABLE_KEY=your-publishable-key \
   --dart-define=GOOGLE_MAPS_API_KEY=your-maps-key
 ```
 
@@ -65,9 +65,16 @@ docker compose up --build
 
 The API exposes `/health` and interactive docs at `/docs`.
 
-Copy `.env.example` to `.env` and set `SUPABASE_JWT_SECRET` before disabling
-`ALLOW_UNAUTHENTICATED_DEV`. Docker Compose mounts the ordered SQL files in
-`backend/migrations` into PostGIS for first-run initialization.
+Copy `.env.example` to `.env` and configure Supabase before disabling
+`ALLOW_UNAUTHENTICATED_DEV`. The API applies the ordered SQL files in
+`backend/migrations` automatically before it starts.
+
+## Deploy with Coolify
+
+The production API image is built from the root `Dockerfile`. Supabase is
+deployed as a separate Coolify service and connected to the API over Coolify's
+private network. Follow [the Coolify deployment guide](deploy/COOLIFY.md) for
+DNS, environment variables, phone OTP, migration, and verification steps.
 
 ## Repository
 

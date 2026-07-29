@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
     supabase_jwt_secret: str = ""
+    supabase_jwks_url: str = ""
+    cors_origins: str = ""
     allow_unauthenticated_dev: bool = True
     use_in_memory_store: bool = False
     ntfy_topic: str = "dey-alert-dev"
