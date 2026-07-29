@@ -90,6 +90,11 @@ SUPABASE_JWT_SECRET=the-value-of-SERVICE_PASSWORD_JWT
 ALLOW_UNAUTHENTICATED_DEV=false
 USE_IN_MEMORY_STORE=false
 CORS_ORIGINS=https://app.example.com
+NEWS_FEEDS_JSON=[]
+NEWS_ADMIN_EMAILS=admin@example.com
+NEWS_AUTO_PUBLISH=false
+NEWS_ADVISORY_TTL_HOURS=72
+NEWS_CLUSTER_RADIUS_KM=25
 ```
 
 Important:
@@ -105,7 +110,47 @@ Important:
 Deploy the application. On every container start it waits for PostgreSQL and
 applies any unapplied SQL files in `backend/migrations` before starting Uvicorn.
 
-## 5. Build the Flutter app for production
+## 5. Configure security-news ingestion
+
+Dey Alert does not scrape publishers by default. Add only RSS/Atom feeds that
+the publisher exposes for syndication or that you are otherwise authorized to
+use. Store article metadata and summaries, show clear attribution, and send
+readers to the original article.
+
+Set `NEWS_FEEDS_JSON` to a compact JSON array:
+
+```json
+[{"name":"Publisher One","url":"https://publisher.example/security.xml"},{"name":"Publisher Two","url":"https://publisher-two.example/rss"}]
+```
+
+In the Dey Alert application, add a Coolify **Scheduled Task**:
+
+- Command: `python scripts/ingest_news.py`
+- Schedule: `*/10 * * * *`
+- Timeout: 300 seconds
+
+The task fetches the configured feeds, rejects unrelated stories, extracts
+Nigerian city/state references, removes duplicate URLs, clusters similar
+coverage, and creates expiring advisories. It does not require a separate
+container.
+
+Keep `NEWS_AUTO_PUBLISH=false`. Reviewers listed in `NEWS_ADMIN_EMAILS` can use
+the authenticated endpoints shown in `/docs`:
+
+- `GET /news/review-queue`
+- `PATCH /advisories/{id}/review` with `{"status":"published"}` or
+  `{"status":"rejected"}`
+
+The public app reads `GET /news/trending` and `GET /advisories`. Published
+advisories appear in the Security News tab and as blue markers on the existing
+Google Map. They remain separate from community incidents and expire after the
+configured TTL.
+
+Only consider `NEWS_AUTO_PUBLISH=true` after measuring false positives and
+location accuracy for every configured feed. Even then, the service
+automatically publishes only advisories with city-level or better coordinates.
+
+## 6. Build the Flutter app for production
 
 The values passed with `--dart-define` are compiled into the app:
 
@@ -122,7 +167,7 @@ Use the same defines with `flutter build appbundle`, `flutter build ipa`, or
 `flutter build web`. Restrict the Google Maps key by app/package and API in the
 Google Cloud console.
 
-## 6. Verify the deployment
+## 7. Verify the deployment
 
 ```bash
 curl https://api.example.com/health
@@ -131,9 +176,12 @@ curl https://supabase.example.com/auth/v1/health
 
 The API response should contain `"status":"ok"`. Then sign in with an
 administrator-created pilot account, complete profile setup, submit a test
-report, and confirm the incident appears in Supabase Studio.
+report, and confirm the incident appears in Supabase Studio. Run the news
+scheduled task manually once, inspect `/news/review-queue`, publish one test
+advisory, and confirm it appears in the News tab and as a blue Google Maps
+marker.
 
-## 7. Production operations
+## 8. Production operations
 
 - Configure off-server PostgreSQL backups and test a restore.
 - Back up Supabase Storage volumes if incident media is stored locally.

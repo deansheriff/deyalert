@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../config/app_config.dart';
+import '../../models/advisory.dart';
 import '../../models/incident.dart';
 import 'auth_service.dart';
 
@@ -41,6 +42,40 @@ class DeyAlertApi {
     final items = response.data?['items'] as List<dynamic>? ?? const [];
     return items
         .map((item) => Incident.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<SecurityAdvisory>> trendingNews({int limit = 20}) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/news/trending',
+      queryParameters: {'limit': limit},
+      options: await _options(),
+    );
+    final items = response.data?['items'] as List<dynamic>? ?? const [];
+    return items
+        .map(
+          (item) =>
+              SecurityAdvisory.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
+        .toList();
+  }
+
+  Future<List<SecurityAdvisory>> nearbyAdvisories({
+    required double lat,
+    required double lng,
+    double radiusKm = 50,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/advisories',
+      queryParameters: {'lat': lat, 'lng': lng, 'radius': radiusKm},
+      options: await _options(),
+    );
+    final items = response.data?['items'] as List<dynamic>? ?? const [];
+    return items
+        .map(
+          (item) =>
+              SecurityAdvisory.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
         .toList();
   }
 

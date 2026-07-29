@@ -26,6 +26,8 @@ The app now supports the first real end-to-end slice:
 - Live feed data from the API with fixture fallback while the API is unavailable.
 - Google Maps incident markers when a Maps key is supplied.
 - Database-backed corroboration and false-report flagging.
+- Reviewed Nigerian security-news advisories, with source attribution, trending
+  ranking, and a separate blue marker layer on Google Maps.
 
 ## Run the Flutter app
 
@@ -75,6 +77,18 @@ The API exposes `/health` and interactive docs at `/docs`.
 Copy `.env.example` to `.env` and configure Supabase before disabling
 `ALLOW_UNAUTHENTICATED_DEV`. The API applies the ordered SQL files in
 `backend/migrations` automatically before it starts.
+
+To ingest configured publisher feeds once:
+
+```bash
+cd backend
+python scripts/ingest_news.py
+```
+
+Feeds are configured with `NEWS_FEEDS_JSON`; nothing is scraped by default.
+Newly detected advisories enter a review queue unless `NEWS_AUTO_PUBLISH=true`.
+Keep that setting off until the classifier and location extraction have been
+validated with the selected publishers.
 
 ## Deploy with Coolify
 

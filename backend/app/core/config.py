@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     flag_hide_threshold: int = 5
     corroboration_threshold: int = 3
     corroboration_radius_km: float = 2.0
+    news_feeds_json: str = "[]"
+    news_admin_emails: str = ""
+    news_auto_publish: bool = False
+    news_advisory_ttl_hours: int = 72
+    news_cluster_radius_km: float = 25.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

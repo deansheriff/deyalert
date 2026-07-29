@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.incidents import router as incidents_router
+from app.api.news import router as news_router
 from app.core.config import get_settings
 
 app = FastAPI(title="Dey Alert API", version="0.1.0")
@@ -23,6 +24,7 @@ if cors_origins:
 
 app.include_router(auth_router)
 app.include_router(incidents_router)
+app.include_router(news_router)
 
 
 @app.get("/health", tags=["system"])

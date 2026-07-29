@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
+import 'package:url_launcher/url_launcher.dart';
 
 import 'core/config/app_config.dart';
+import 'core/services/advisory_repository.dart';
 import 'core/services/api_service.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/connectivity_service.dart';
 import 'core/services/incident_repository.dart';
 import 'core/services/location_service.dart';
+import 'models/advisory.dart';
 import 'models/incident.dart';
 
 Future<void> main() async {
@@ -678,17 +681,21 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int index = 0;
   final _repository = IncidentRepository();
+  final _advisoryRepository = AdvisoryRepository();
   final _connectivity = ConnectivityService();
   List<Incident> _incidents = List.of(demoIncidents);
+  List<SecurityAdvisory> _trendingAdvisories = List.of(demoAdvisories);
+  List<SecurityAdvisory> _nearbyAdvisories = List.of(demoAdvisories);
   bool _loading = false;
+  bool _newsLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadIncidents();
+    _loadContent();
     _connectivity.listen(() async {
       await _repository.syncPending();
-      await _loadIncidents();
+      await _loadContent();
     });
   }
 
@@ -708,6 +715,24 @@ class _HomeShellState extends State<HomeShell> {
     });
   }
 
+  Future<void> _loadAdvisories() async {
+    if (mounted) setState(() => _newsLoading = true);
+    final results = await Future.wait([
+      _advisoryRepository.loadTrending(),
+      _advisoryRepository.loadNearby(),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _trendingAdvisories = results[0];
+      _nearbyAdvisories = results[1];
+      _newsLoading = false;
+    });
+  }
+
+  Future<void> _loadContent() async {
+    await Future.wait([_loadIncidents(), _loadAdvisories()]);
+  }
+
   Future<void> _openReport() async {
     final submitted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -720,11 +745,16 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      MapViewScreen(incidents: _incidents),
+      MapViewScreen(incidents: _incidents, advisories: _nearbyAdvisories),
       IncidentFeedScreen(
         incidents: _incidents,
         loading: _loading,
         onRefresh: _loadIncidents,
+      ),
+      SecurityNewsScreen(
+        advisories: _trendingAdvisories,
+        loading: _newsLoading,
+        onRefresh: _loadContent,
       ),
       const SosScreen(),
       const ProfileScreen(),
@@ -758,6 +788,11 @@ class _HomeShellState extends State<HomeShell> {
             label: 'Feed',
           ),
           NavigationDestination(
+            icon: Icon(Icons.newspaper_outlined),
+            selectedIcon: Icon(Icons.newspaper, color: Color(0xFF4DA3FF)),
+            label: 'News',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.emergency_outlined),
             selectedIcon: Icon(Icons.emergency, color: _red),
             label: 'SOS',
@@ -774,13 +809,18 @@ class _HomeShellState extends State<HomeShell> {
 }
 
 class MapViewScreen extends StatelessWidget {
-  const MapViewScreen({required this.incidents, super.key});
+  const MapViewScreen({
+    required this.incidents,
+    required this.advisories,
+    super.key,
+  });
   final List<Incident> incidents;
+  final List<SecurityAdvisory> advisories;
 
   @override
   Widget build(BuildContext context) {
     if (AppConfig.hasGoogleMaps) {
-      final markers = incidents
+      final incidentMarkers = incidents
           .map(
             (incident) => Marker(
               markerId: MarkerId(incident.id),
@@ -804,6 +844,27 @@ class MapViewScreen extends StatelessWidget {
             ),
           )
           .toSet();
+      final advisoryMarkers = advisories
+          .where((advisory) => advisory.hasLocation)
+          .map(
+            (advisory) => Marker(
+              markerId: MarkerId('advisory-${advisory.id}'),
+              position: LatLng(advisory.lat!, advisory.lng!),
+              infoWindow: InfoWindow(
+                title: 'Media advisory: ${advisory.title}',
+                snippet: '${advisory.locationName} · ${advisory.sourceLabel}',
+              ),
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueAzure,
+              ),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AdvisoryDetailScreen(advisory: advisory),
+                ),
+              ),
+            ),
+          )
+          .toSet();
       return SafeArea(
         child: Stack(
           children: [
@@ -812,13 +873,18 @@ class MapViewScreen extends StatelessWidget {
                 target: LatLng(6.6018, 3.3515),
                 zoom: 13.8,
               ),
-              markers: markers,
+              markers: {...incidentMarkers, ...advisoryMarkers},
               myLocationButtonEnabled: true,
               myLocationEnabled: true,
               mapToolbarEnabled: false,
               padding: const EdgeInsets.only(top: 145, bottom: 90),
             ),
-            _MapHeader(incidentCount: incidents.length),
+            _MapHeader(
+              incidentCount: incidents.length,
+              advisoryCount: advisories
+                  .where((item) => item.hasLocation)
+                  .length,
+            ),
           ],
         ),
       );
@@ -882,7 +948,7 @@ class MapViewScreen extends StatelessWidget {
                       const Icon(Icons.radar, size: 18, color: _greenBright),
                       const SizedBox(width: 8),
                       Text(
-                        '${incidents.length} incidents within 5 km',
+                        '${incidents.length} reports · ${advisories.length} media advisories',
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ],
@@ -916,6 +982,15 @@ class MapViewScreen extends StatelessWidget {
               child: _MapPin(
                 label: incidents[2].displayType,
                 color: incidents[2].statusColor,
+              ),
+            ),
+          if (advisories.isNotEmpty)
+            Positioned(
+              right: 34,
+              top: 510,
+              child: _MapPin(
+                label: 'Media: ${advisories.first.locationName}',
+                color: advisories.first.markerColor,
               ),
             ),
           Positioned(
@@ -1094,6 +1169,347 @@ class IncidentCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class SecurityNewsScreen extends StatelessWidget {
+  const SecurityNewsScreen({
+    required this.advisories,
+    required this.loading,
+    required this.onRefresh,
+    super.key,
+  });
+
+  final List<SecurityAdvisory> advisories;
+  final bool loading;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: RefreshIndicator(
+        onRefresh: onRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 100),
+          children: [
+            const Text(
+              'Security news',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Trending, location-aware coverage from configured Nigerian news outlets.',
+              style: TextStyle(color: _muted, height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF4DA3FF).withValues(alpha: .1),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: const Color(0xFF4DA3FF).withValues(alpha: .35),
+                ),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, color: Color(0xFF4DA3FF)),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Blue items are reviewed media advisories, not eyewitness community reports. Always open the original sources before acting.',
+                      style: TextStyle(height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (loading) ...[
+              const SizedBox(height: 14),
+              const LinearProgressIndicator(minHeight: 2),
+            ],
+            const SizedBox(height: 18),
+            if (advisories.isEmpty)
+              const _EmptyNewsState()
+            else
+              ...advisories.map(
+                (advisory) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: AdvisoryCard(advisory: advisory),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyNewsState extends StatelessWidget {
+  const _EmptyNewsState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _divider),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.newspaper_outlined, size: 42, color: _muted),
+          SizedBox(height: 12),
+          Text(
+            'No reviewed advisories yet',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          SizedBox(height: 6),
+          Text('Pull down to check again.', style: TextStyle(color: _muted)),
+        ],
+      ),
+    );
+  }
+}
+
+class AdvisoryCard extends StatelessWidget {
+  const AdvisoryCard({required this.advisory, super.key});
+
+  final SecurityAdvisory advisory;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AdvisoryDetailScreen(advisory: advisory),
+        ),
+      ),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: _surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: advisory.markerColor.withValues(alpha: .4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: advisory.markerColor.withValues(alpha: .14),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'MEDIA ADVISORY',
+                    style: TextStyle(
+                      color: Color(0xFF78BAFF),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .6,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  advisory.time,
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              advisory.title,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              advisory.summary,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, height: 1.45),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Icon(
+                  Icons.location_on_outlined,
+                  size: 17,
+                  color: advisory.markerColor,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    '${advisory.locationName} · ${advisory.confidenceLabel}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  advisory.sourceLabel,
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AdvisoryDetailScreen extends StatelessWidget {
+  const AdvisoryDetailScreen({required this.advisory, super.key});
+
+  final SecurityAdvisory advisory;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Media advisory')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
+        children: [
+          Row(
+            children: [
+              Icon(Icons.newspaper, color: advisory.markerColor),
+              const SizedBox(width: 8),
+              Text(
+                'Reviewed media coverage',
+                style: TextStyle(
+                  color: advisory.markerColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            advisory.title,
+            style: const TextStyle(
+              fontSize: 26,
+              height: 1.15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            advisory.summary,
+            style: const TextStyle(color: _muted, fontSize: 16, height: 1.55),
+          ),
+          const SizedBox(height: 18),
+          _DetailRow(
+            icon: Icons.location_on_outlined,
+            label: advisory.locationName,
+            value: advisory.confidenceLabel,
+            color: advisory.markerColor,
+          ),
+          _DetailRow(
+            icon: Icons.fact_check_outlined,
+            label: advisory.sourceLabel,
+            value: '${advisory.articleCount} linked reports',
+            color: advisory.markerColor,
+          ),
+          _DetailRow(
+            icon: Icons.schedule,
+            label: 'Updated ${advisory.time}',
+            value: 'Advisories expire automatically',
+            color: advisory.markerColor,
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'Original reporting',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          ...advisory.sources.map(
+            (source) => Card(
+              color: _surface,
+              child: ListTile(
+                title: Text(source.sourceName),
+                subtitle: Text(
+                  source.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: () => _openArticle(context, source.url),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'This item summarizes external reporting. Dey Alert does not treat it as an eyewitness report or emergency instruction.',
+            style: TextStyle(color: _muted, height: 1.45),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _openArticle(BuildContext context, String value) async {
+  final uri = Uri.tryParse(value);
+  if (uri == null ||
+      !{'http', 'https'}.contains(uri.scheme) ||
+      !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open this news source.')),
+      );
+    }
   }
 }
 
@@ -1700,8 +2116,9 @@ class ProfileScreen extends StatelessWidget {
 }
 
 class _MapHeader extends StatelessWidget {
-  const _MapHeader({required this.incidentCount});
+  const _MapHeader({required this.incidentCount, required this.advisoryCount});
   final int incidentCount;
+  final int advisoryCount;
 
   @override
   Widget build(BuildContext context) {
@@ -1725,7 +2142,7 @@ class _MapHeader extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  '$incidentCount within 5 km',
+                  '$incidentCount reports · $advisoryCount media',
                   style: const TextStyle(color: _muted),
                 ),
               ],
