@@ -3,7 +3,17 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.models.incident import CorroborateRequest, IncidentCreate, Location
+from app.services.incident_service import (
+    InMemoryIncidentService,
+    get_incident_service,
+)
+from app.services.profile_service import InMemoryProfileService, get_profile_service
 
+service = InMemoryIncidentService()
+profiles = InMemoryProfileService()
+app.dependency_overrides[get_incident_service] = lambda: service
+app.dependency_overrides[get_profile_service] = lambda: profiles
 client = TestClient(app)
 
 
@@ -14,16 +24,50 @@ def test_health() -> None:
 
 
 def test_incident_corroborates_after_three_unique_users() -> None:
-    created = client.post("/incidents", json={"type": "roadblock", "description": "Checkpoint on Allen Avenue", "location": {"lat": 6.6018, "lng": 3.3515}})
-    assert created.status_code == 201
-    incident_id = created.json()["id"]
+    incident = service.create(
+        IncidentCreate(
+            type="roadblock",
+            description="Checkpoint on Allen Avenue",
+            location=Location(lat=6.6018, lng=3.3515),
+        ),
+        reporter_id=uuid4(),
+    )
+    payload = CorroborateRequest(location=Location(lat=6.602, lng=3.352))
     for _ in range(3):
-        response = client.post(f"/incidents/{incident_id}/corroborate", json={"user_id": str(uuid4()), "location": {"lat": 6.602, "lng": 3.352}})
-        assert response.status_code == 200
-    assert response.json()["status"] == "corroborated"
-    assert response.json()["corroboration_count"] == 3
+        updated = service.corroborate(incident.id, uuid4(), payload)
+    assert updated.status == "corroborated"
+    assert updated.corroboration_count == 3
 
 
 def test_nearby_filter_requires_lat_and_lng_together() -> None:
     response = client.get("/incidents?lat=6.6")
     assert response.status_code == 400
+
+
+def test_create_uses_authenticated_user_identity() -> None:
+    response = client.post(
+        "/incidents",
+        json={
+            "type": "roadblock",
+            "location": {"lat": 6.6018, "lng": 3.3515},
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["reporter_id"] == "00000000-0000-4000-8000-000000000001"
+
+
+def test_profile_uses_server_derived_phone_and_user_id() -> None:
+    response = client.put(
+        "/auth/profile",
+        json={
+            "name": "Adaeze Okafor",
+            "state": "Lagos",
+            "lga": "Ikeja",
+            "ward": "Allen",
+            "alert_radius_km": 5,
+            "location_precision": "ward",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["id"] == "00000000-0000-4000-8000-000000000001"
+    assert response.json()["phone"] == "+2348000000000"

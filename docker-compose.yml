@@ -4,6 +4,8 @@ services:
       context: ./backend
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/dey_alert
     ports:
       - "8000:8000"
     volumes:
@@ -18,6 +20,7 @@ services:
       - "5432:5432"
     volumes:
       - dey_alert_pgdata:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
 
 volumes:
   dey_alert_pgdata:

@@ -69,15 +69,14 @@ class Incident(BaseModel):
     is_hidden: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    distance_km: float | None = None
 
 
 class CorroborateRequest(BaseModel):
-    user_id: UUID
     location: Location
 
 
 class FlagRequest(BaseModel):
-    user_id: UUID
     reason: str = Field(pattern="^(false_report|duplicate|spam|inappropriate)$")
     notes: str | None = Field(default=None, max_length=500)
 
