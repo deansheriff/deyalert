@@ -5,6 +5,11 @@ from pydantic import BaseModel, Field
 
 class ProfileUpdate(BaseModel):
     name: str = Field(min_length=2, max_length=100)
+    phone: str | None = Field(
+        default=None,
+        pattern=r"^\+[1-9]\d{7,14}$",
+        max_length=20,
+    )
     state: str = Field(min_length=2, max_length=50)
     lga: str = Field(min_length=2, max_length=100)
     ward: str = Field(min_length=2, max_length=100)
@@ -14,5 +19,6 @@ class ProfileUpdate(BaseModel):
 
 class UserProfile(ProfileUpdate):
     id: UUID
-    phone: str
+    email: str | None
+    phone_verified: bool = False
     role: str = "member"

@@ -10,6 +10,10 @@ class AppConfig {
     'SUPABASE_PUBLISHABLE_KEY',
     defaultValue: String.fromEnvironment('SUPABASE_ANON_KEY'),
   );
+  static const allowEmailSignUp = bool.fromEnvironment(
+    'AUTH_ALLOW_SIGN_UP',
+    defaultValue: false,
+  );
   static const googleMapsApiKey = String.fromEnvironment('GOOGLE_MAPS_API_KEY');
 
   static SupabaseClient? supabase;

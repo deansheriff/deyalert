@@ -56,11 +56,14 @@ def test_create_uses_authenticated_user_identity() -> None:
     assert response.json()["reporter_id"] == "00000000-0000-4000-8000-000000000001"
 
 
-def test_profile_uses_server_derived_phone_and_user_id() -> None:
+def test_profile_uses_server_derived_email_and_optional_phone() -> None:
     response = client.put(
         "/auth/profile",
         json={
             "name": "Adaeze Okafor",
+            "email": "spoofed@example.com",
+            "phone": "+2348012345678",
+            "phone_verified": True,
             "state": "Lagos",
             "lga": "Ikeja",
             "ward": "Allen",
@@ -70,4 +73,22 @@ def test_profile_uses_server_derived_phone_and_user_id() -> None:
     )
     assert response.status_code == 200
     assert response.json()["id"] == "00000000-0000-4000-8000-000000000001"
-    assert response.json()["phone"] == "+2348000000000"
+    assert response.json()["email"] == "demo@deyalert.local"
+    assert response.json()["phone"] == "+2348012345678"
+    assert response.json()["phone_verified"] is False
+
+
+def test_profile_phone_can_be_omitted() -> None:
+    response = client.put(
+        "/auth/profile",
+        json={
+            "name": "Chinedu Okafor",
+            "state": "Lagos",
+            "lga": "Ikeja",
+            "ward": "Alausa",
+            "alert_radius_km": 5,
+            "location_precision": "ward",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["phone"] is None

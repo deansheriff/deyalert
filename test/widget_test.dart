@@ -13,17 +13,14 @@ void main() {
     expect(find.text('Continue'), findsOneWidget);
   });
 
-  testWidgets('demo OTP reaches profile setup', (tester) async {
+  testWidgets('demo email login reaches profile setup', (tester) async {
     await tester.pumpWidget(const DeyAlertApp());
     await tester.tap(find.text('Skip'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), '08012345678');
-    await tester.tap(find.text('Send OTP'));
-    await tester.pumpAndSettle();
-
-    await tester.enterText(find.byType(TextField), '123456');
-    await tester.tap(find.text('Verify & continue'));
+    await tester.enterText(find.byType(TextField).at(0), 'demo@deyalert.local');
+    await tester.enterText(find.byType(TextField).at(1), 'password123');
+    await tester.tap(find.text('Sign in & continue'));
     await tester.pumpAndSettle();
 
     expect(find.text('Complete your profile'), findsOneWidget);

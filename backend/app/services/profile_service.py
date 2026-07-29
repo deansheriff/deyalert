@@ -22,7 +22,8 @@ class InMemoryProfileService:
     def upsert(self, user: CurrentUser, payload: ProfileUpdate) -> UserProfile:
         profile = UserProfile(
             id=user.id,
-            phone=user.phone,
+            email=user.email,
+            phone_verified=False,
             role="member",
             **payload.model_dump(),
         )
@@ -38,13 +39,18 @@ class DatabaseProfileService:
         statement = text(
             """
             INSERT INTO users (
-                id, phone, name, state, lga, ward, alert_radius_km,
-                location_precision
+                id, email, phone, name, state, lga, ward, alert_radius_km,
+                location_precision, phone_verified
             ) VALUES (
-                :id, :phone, :name, :state, :lga, :ward, :alert_radius_km,
-                :location_precision
+                :id, :email, :phone, :name, :state, :lga, :ward,
+                :alert_radius_km, :location_precision, false
             )
             ON CONFLICT (id) DO UPDATE SET
+                email = EXCLUDED.email,
+                phone_verified = CASE
+                    WHEN users.phone IS DISTINCT FROM EXCLUDED.phone THEN false
+                    ELSE users.phone_verified
+                END,
                 phone = EXCLUDED.phone,
                 name = EXCLUDED.name,
                 state = EXCLUDED.state,
@@ -53,12 +59,12 @@ class DatabaseProfileService:
                 alert_radius_km = EXCLUDED.alert_radius_km,
                 location_precision = EXCLUDED.location_precision,
                 updated_at = NOW()
-            RETURNING id, phone, name, state, lga, ward, alert_radius_km,
-                      location_precision, role
+            RETURNING id, email, phone, phone_verified, name, state, lga,
+                      ward, alert_radius_km, location_precision, role
             """
         )
         values = payload.model_dump()
-        values.update({"id": user.id, "phone": user.phone})
+        values.update({"id": user.id, "email": user.email})
         with get_session_factory()() as session, session.begin():
             row = session.execute(statement, values).one()
             return UserProfile.model_validate(dict(row._mapping))
@@ -68,8 +74,8 @@ class DatabaseProfileService:
             row = session.execute(
                 text(
                     """
-                    SELECT id, phone, name, state, lga, ward, alert_radius_km,
-                           location_precision, role
+                    SELECT id, email, phone, phone_verified, name, state, lga,
+                           ward, alert_radius_km, location_precision, role
                     FROM users WHERE id = :user_id
                     """
                 ),

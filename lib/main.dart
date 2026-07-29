@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 
 import 'core/config/app_config.dart';
 import 'core/services/api_service.dart';
@@ -195,62 +196,80 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _openApp(BuildContext context) => Navigator.of(
     context,
-  ).pushReplacement(MaterialPageRoute(builder: (_) => const PhoneAuthScreen()));
+  ).pushReplacement(MaterialPageRoute(builder: (_) => const EmailAuthScreen()));
 }
 
-class PhoneAuthScreen extends StatefulWidget {
-  const PhoneAuthScreen({super.key});
+class EmailAuthScreen extends StatefulWidget {
+  const EmailAuthScreen({super.key});
 
   @override
-  State<PhoneAuthScreen> createState() => _PhoneAuthScreenState();
+  State<EmailAuthScreen> createState() => _EmailAuthScreenState();
 }
 
-class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
-  final _phoneController = TextEditingController();
-  final _otpController = TextEditingController();
+class _EmailAuthScreenState extends State<EmailAuthScreen> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _auth = AuthService();
-  bool _otpSent = false;
+  bool _createAccount = false;
+  bool _obscurePassword = true;
   bool _loading = false;
   String? _error;
+  String? _notice;
 
   @override
   void dispose() {
-    _phoneController.dispose();
-    _otpController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
-  String get _phoneNumber {
-    var value = _phoneController.text.replaceAll(RegExp(r'\D'), '');
-    if (value.startsWith('0')) value = value.substring(1);
-    if (value.startsWith('234')) return '+$value';
-    return '+234$value';
-  }
-
   Future<void> _submit() async {
+    final email = _emailController.text.trim().toLowerCase();
+    final password = _passwordController.text;
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+      setState(() => _error = 'Enter a valid email address.');
+      return;
+    }
+    if (password.length < 8) {
+      setState(() => _error = 'Password must be at least 8 characters.');
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
+      _notice = null;
     });
     try {
-      if (!_otpSent) {
-        if (_phoneController.text.replaceAll(RegExp(r'\D'), '').length < 10) {
-          throw const FormatException('Enter a valid Nigerian phone number.');
-        }
-        await _auth.requestOtp(_phoneNumber);
-        if (mounted) setState(() => _otpSent = true);
-      } else {
-        await _auth.verifyOtp(
-          phoneNumber: _phoneNumber,
-          token: _otpController.text.trim(),
+      if (_createAccount) {
+        final sessionReady = await _auth.signUp(
+          email: email,
+          password: password,
         );
-        if (!mounted) return;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
+        if (!sessionReady) {
+          if (mounted) {
+            setState(() {
+              _notice =
+                  'Check your email to confirm your account, then return here to sign in.';
+              _createAccount = false;
+            });
+          }
+          return;
+        }
+      } else {
+        await _auth.signIn(email: email, password: password);
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = error is AuthException
+              ? error.message
+              : 'Could not sign in. Please try again.',
         );
       }
-    } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -259,28 +278,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        leading: _otpSent
-            ? IconButton(
-                onPressed: () => setState(() => _otpSent = false),
-                icon: const Icon(Icons.arrow_back),
-              )
-            : null,
-      ),
+      appBar: AppBar(),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
           children: [
             const BrandMark(),
             const SizedBox(height: 52),
-            Icon(
-              _otpSent ? Icons.sms_outlined : Icons.phone_android,
-              size: 46,
-              color: _greenBright,
-            ),
+            const Icon(Icons.alternate_email, size: 46, color: _greenBright),
             const SizedBox(height: 22),
             Text(
-              _otpSent ? 'Verify your number' : 'Stay alert. Stay connected.',
+              _createAccount ? 'Create your account' : 'Welcome back',
               style: const TextStyle(
                 fontSize: 30,
                 height: 1.1,
@@ -289,45 +297,52 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              _otpSent
-                  ? 'We sent a 6-digit code to $_phoneNumber.'
-                  : 'Join your community to report and receive trusted local security updates.',
+              _createAccount
+                  ? 'Create a secure login for community alerts and incident reporting.'
+                  : 'Sign in to report incidents and receive trusted local security updates.',
               style: const TextStyle(color: _muted, fontSize: 16, height: 1.5),
             ),
             const SizedBox(height: 30),
-            if (!_otpSent)
-              TextField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Phone number',
-                  prefixText: '+234  ',
-                  hintText: '801 234 5678',
-                  prefixIcon: Icon(Icons.phone_outlined),
-                ),
-              )
-            else
-              TextField(
-                controller: _otpController,
-                keyboardType: TextInputType.number,
-                autofocus: true,
-                maxLength: 6,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 12,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Verification code',
-                  counterText: '',
-                  hintText: '••••••',
+            TextField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.email],
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Email address',
+                hintText: 'you@example.com',
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _passwordController,
+              obscureText: _obscurePassword,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.password],
+              onSubmitted: (_) => _loading ? null : _submit(),
+              decoration: InputDecoration(
+                labelText: 'Password',
+                prefixIcon: const Icon(Icons.lock_outline),
+                suffixIcon: IconButton(
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
                 ),
               ),
+            ),
             if (_error != null) ...[
               const SizedBox(height: 12),
               Text(_error!, style: const TextStyle(color: _red)),
+            ],
+            if (_notice != null) ...[
+              const SizedBox(height: 12),
+              Text(_notice!, style: const TextStyle(color: _greenBright)),
             ],
             const SizedBox(height: 20),
             FilledButton(
@@ -339,8 +354,50 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                       height: 22,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text(_otpSent ? 'Verify & continue' : 'Send OTP'),
+                  : Text(
+                      _createAccount ? 'Create account' : 'Sign in & continue',
+                    ),
             ),
+            if (AppConfig.allowEmailSignUp) ...[
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: _loading
+                    ? null
+                    : () => setState(() {
+                        _createAccount = !_createAccount;
+                        _error = null;
+                        _notice = null;
+                      }),
+                child: Text(
+                  _createAccount
+                      ? 'Already have an account? Sign in'
+                      : 'Need an account? Create one',
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: _green.withValues(alpha: .08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _green.withValues(alpha: .28)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.group_outlined, size: 18, color: _greenBright),
+                    SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        'Dey Alert is currently invite-only. Ask your community administrator for an account.',
+                        style: TextStyle(color: _muted, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             const Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -349,7 +406,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                 SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    'Your number is used for verification and never shared.',
+                    'Your password is handled securely by Supabase Auth.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: _muted, fontSize: 12),
                   ),
@@ -366,7 +423,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
                   border: Border.all(color: _amber.withValues(alpha: .28)),
                 ),
                 child: const Text(
-                  'Demo mode: Supabase keys are not configured. Enter any valid phone number and use OTP 123456.',
+                  'Demo mode: use demo@deyalert.local and password123.',
                   style: TextStyle(color: _amber, height: 1.4),
                 ),
               ),
@@ -387,6 +444,7 @@ class ProfileSetupScreen extends StatefulWidget {
 
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _api = DeyAlertApi();
   String _state = 'Lagos';
   String _lga = 'Ikeja';
@@ -399,12 +457,28 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _phoneController.dispose();
     super.dispose();
+  }
+
+  String? get _optionalPhone {
+    var value = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+    if (value.isEmpty) return null;
+    if (value.startsWith('0')) value = value.substring(1);
+    if (value.startsWith('234')) return '+$value';
+    return '+234$value';
   }
 
   Future<void> _continue() async {
     if (_nameController.text.trim().length < 2) {
       setState(() => _message = 'Enter your name to continue.');
+      return;
+    }
+    final phoneDigits = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+    if (phoneDigits.isNotEmpty && phoneDigits.length < 10) {
+      setState(
+        () => _message = 'Enter a complete phone number or leave it blank.',
+      );
       return;
     }
     setState(() {
@@ -414,6 +488,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     try {
       await _api.saveProfile(
         name: _nameController.text.trim(),
+        phone: _optionalPhone,
         state: _state,
         lga: _lga,
         ward: _ward,
@@ -459,6 +534,20 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             decoration: const InputDecoration(
               labelText: 'Name',
               prefixIcon: Icon(Icons.person_outline),
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Phone number (optional)',
+              prefixText: '+234  ',
+              hintText: '801 234 5678',
+              prefixIcon: Icon(Icons.phone_outlined),
+              helperText:
+                  'Verification will be introduced before public launch.',
+              helperMaxLines: 2,
             ),
           ),
           const SizedBox(height: 14),
@@ -1590,6 +1679,19 @@ class ProfileScreen extends StatelessWidget {
             icon: Icons.notifications_none,
             title: 'Notifications',
             subtitle: 'Nearby alerts are on',
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await AuthService().signOut();
+              if (!context.mounted) return;
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const EmailAuthScreen()),
+                (_) => false,
+              );
+            },
+            icon: const Icon(Icons.logout),
+            label: const Text('Sign out'),
           ),
         ],
       ),

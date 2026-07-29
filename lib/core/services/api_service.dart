@@ -82,6 +82,7 @@ class DeyAlertApi {
 
   Future<void> saveProfile({
     required String name,
+    String? phone,
     required String state,
     required String lga,
     required String ward,
@@ -92,6 +93,7 @@ class DeyAlertApi {
       '/auth/profile',
       data: {
         'name': name,
+        'phone': phone,
         'state': state,
         'lga': lga,
         'ward': ward,

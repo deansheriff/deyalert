@@ -36,29 +36,35 @@ less, but the complete stack has many containers.
 Do not put the service-role/secret key in the Flutter app. Only the publishable
 key (or legacy anon key) is safe to compile into the client.
 
-## 3. Configure phone OTP
+## 3. Configure invite-only email authentication
 
-Phone signup can be enabled while SMS delivery is still unconfigured. For
-production OTP delivery, edit the Supabase service Compose configuration and
-pass the matching variables into the `supabase-auth` service. A Twilio example:
+Add these variables to the Coolify Supabase service and redeploy it:
 
-```yaml
-environment:
-  GOTRUE_EXTERNAL_PHONE_ENABLED: "true"
-  GOTRUE_SMS_PROVIDER: twilio
-  GOTRUE_SMS_OTP_EXP: "300"
-  GOTRUE_SMS_OTP_LENGTH: "6"
-  GOTRUE_SMS_MAX_FREQUENCY: 60s
-  GOTRUE_SMS_TEMPLATE: "Your Dey Alert code is {{ .Code }}"
-  GOTRUE_SMS_TWILIO_ACCOUNT_SID: ${SMS_TWILIO_ACCOUNT_SID}
-  GOTRUE_SMS_TWILIO_AUTH_TOKEN: ${SMS_TWILIO_AUTH_TOKEN}
-  GOTRUE_SMS_TWILIO_MESSAGE_SERVICE_SID: ${SMS_TWILIO_MESSAGE_SERVICE_SID}
+```dotenv
+DISABLE_SIGNUP=true
+ENABLE_EMAIL_SIGNUP=true
+ENABLE_EMAIL_AUTOCONFIRM=true
+ENABLE_PHONE_SIGNUP=false
 ```
 
-Store the three `SMS_TWILIO_*` values as Coolify service environment variables,
-then redeploy Supabase. Supabase Auth also supports MessageBird, Vonage, and
-TextLocal, but their provider-specific variables differ. Use E.164 phone numbers
-such as `+2348012345678`.
+This allows email/password login but blocks users from creating their own
+accounts. Create pilot members from **Supabase Studio > Authentication > Users**
+and give each member a strong temporary password through a secure channel.
+
+The Flutter app independently hides account creation unless it is compiled with
+`AUTH_ALLOW_SIGN_UP=true`. Keep that setting false for invite-only builds.
+
+When public registration is enabled later:
+
+1. Configure production SMTP in the Supabase service.
+2. Set `DISABLE_SIGNUP=false`.
+3. Set `ENABLE_EMAIL_AUTOCONFIRM=false` so users must confirm their addresses.
+4. Build the app with `--dart-define=AUTH_ALLOW_SIGN_UP=true`.
+
+Phone is now optional, unverified profile data. When paid SMS verification is
+introduced, the database already includes `phone_verified`. A later phase will
+add the verification UI and connect a supported SMS provider before
+`ENABLE_PHONE_SIGNUP` is turned on.
 
 ## 4. Deploy the API from the repository
 
@@ -108,6 +114,7 @@ flutter build apk --release \
   --dart-define=API_BASE_URL=https://api.example.com \
   --dart-define=SUPABASE_URL=https://supabase.example.com \
   --dart-define=SUPABASE_PUBLISHABLE_KEY=your-publishable-or-anon-key \
+  --dart-define=AUTH_ALLOW_SIGN_UP=false \
   --dart-define=GOOGLE_MAPS_API_KEY=your-restricted-maps-key
 ```
 
@@ -122,9 +129,9 @@ curl https://api.example.com/health
 curl https://supabase.example.com/auth/v1/health
 ```
 
-The API response should contain `"status":"ok"`. Then request an OTP from the
-app, complete profile setup, submit a test report, and confirm the incident
-appears in Supabase Studio.
+The API response should contain `"status":"ok"`. Then sign in with an
+administrator-created pilot account, complete profile setup, submit a test
+report, and confirm the incident appears in Supabase Studio.
 
 ## 7. Production operations
 

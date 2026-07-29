@@ -15,8 +15,10 @@ Dey Alert is a mobile-first, hyper-local security alert app for Nigerian communi
 
 The app now supports the first real end-to-end slice:
 
-- Supabase phone OTP with a credential-free demo mode (`123456`).
-- State/LGA/ward profile setup with alert radius and privacy precision.
+- Supabase email/password authentication with invite-only registration by
+  default and credential-free demo mode.
+- State/LGA/ward profile setup with optional phone, alert radius, and privacy
+  precision.
 - Authenticated FastAPI requests; user identity comes from the verified JWT.
 - PostGIS persistence and `ST_DWithin` proximity queries.
 - Report submission with GPS and an SQLite offline queue.
@@ -33,12 +35,17 @@ flutter run \
   --dart-define=API_BASE_URL=http://10.0.2.2:8000 \
   --dart-define=SUPABASE_URL=https://your-project.supabase.co \
   --dart-define=SUPABASE_PUBLISHABLE_KEY=your-publishable-key \
+  --dart-define=AUTH_ALLOW_SIGN_UP=false \
   --dart-define=GOOGLE_MAPS_API_KEY=your-maps-key
 ```
 
 For Android, also set the Gradle property `GOOGLE_MAPS_API_KEY`. For iOS, set
 the `GOOGLE_MAPS_API_KEY` build setting. Without these values the app uses its
 safe demo auth and stylized map fallback.
+
+Demo auth uses `demo@deyalert.local` with password `password123`. Production
+builds default to invite-only sign-in. Set `AUTH_ALLOW_SIGN_UP=true` only after
+enabling public email registration and production SMTP in Supabase.
 
 For a local web build:
 
@@ -74,7 +81,8 @@ Copy `.env.example` to `.env` and configure Supabase before disabling
 The production API image is built from the root `Dockerfile`. Supabase is
 deployed as a separate Coolify service and connected to the API over Coolify's
 private network. Follow [the Coolify deployment guide](deploy/COOLIFY.md) for
-DNS, environment variables, phone OTP, migration, and verification steps.
+DNS, environment variables, invite-only email auth, migration, and verification
+steps.
 
 ## Repository
 

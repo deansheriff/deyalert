@@ -9,28 +9,31 @@ class AuthService {
   bool get isDemoMode => AppConfig.isDemoMode;
   bool get isAuthenticated => isDemoMode || _client?.auth.currentUser != null;
   String get userId => _client?.auth.currentUser?.id ?? demoUserId;
-  String? get phone => _client?.auth.currentUser?.phone;
+  String? get email => _client?.auth.currentUser?.email;
 
-  Future<void> requestOtp(String phoneNumber) async {
-    if (isDemoMode) return;
-    await _client!.auth.signInWithOtp(phone: phoneNumber);
-  }
-
-  Future<void> verifyOtp({
-    required String phoneNumber,
-    required String token,
-  }) async {
+  Future<void> signIn({required String email, required String password}) async {
     if (isDemoMode) {
-      if (token != '123456') {
-        throw const AuthException('Use 123456 in demo mode.');
+      if (email.toLowerCase() != 'demo@deyalert.local' ||
+          password != 'password123') {
+        throw const AuthException(
+          'Use demo@deyalert.local and password123 in demo mode.',
+        );
       }
       return;
     }
-    await _client!.auth.verifyOTP(
-      type: OtpType.sms,
-      phone: phoneNumber,
-      token: token,
+    await _client!.auth.signInWithPassword(email: email, password: password);
+  }
+
+  Future<bool> signUp({required String email, required String password}) async {
+    if (!AppConfig.allowEmailSignUp) {
+      throw const AuthException('New accounts are currently invite-only.');
+    }
+    if (isDemoMode) return true;
+    final response = await _client!.auth.signUp(
+      email: email,
+      password: password,
     );
+    return response.session != null;
   }
 
   Future<void> signOut() async {

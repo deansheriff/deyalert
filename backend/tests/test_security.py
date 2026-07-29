@@ -21,6 +21,7 @@ def token_claims() -> dict[str, object]:
     return {
         "sub": str(uuid4()),
         "aud": "authenticated",
+        "email": "member@example.com",
         "phone": "+2348012345678",
         "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
     }
