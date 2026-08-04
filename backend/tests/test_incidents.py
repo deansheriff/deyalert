@@ -56,6 +56,38 @@ def test_create_uses_authenticated_user_identity() -> None:
     assert response.json()["reporter_id"] == "00000000-0000-4000-8000-000000000001"
 
 
+def test_create_is_idempotent_for_client_report_id() -> None:
+    reporter_id = uuid4()
+    client_report_id = uuid4()
+    payload = IncidentCreate(
+        client_report_id=client_report_id,
+        type="roadblock",
+        location=Location(lat=6.6018, lng=3.3515),
+    )
+
+    first = service.create(payload, reporter_id)
+    retry = service.create(payload, reporter_id)
+
+    assert retry.id == first.id
+
+
+def test_separate_create_payloads_receive_distinct_idempotency_keys() -> None:
+    reporter_id = uuid4()
+    first_payload = IncidentCreate(
+        type="roadblock",
+        location=Location(lat=6.6018, lng=3.3515),
+    )
+    second_payload = IncidentCreate(
+        type="roadblock",
+        location=Location(lat=6.6018, lng=3.3515),
+    )
+
+    first = service.create(first_payload, reporter_id)
+    second = service.create(second_payload, reporter_id)
+
+    assert second.id != first.id
+
+
 def test_profile_uses_server_derived_email_and_optional_phone() -> None:
     response = client.put(
         "/auth/profile",

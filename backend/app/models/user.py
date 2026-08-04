@@ -22,3 +22,16 @@ class UserProfile(ProfileUpdate):
     email: str | None
     phone_verified: bool = False
     role: str = "member"
+
+
+class VerifierCreate(BaseModel):
+    user_id: UUID
+    state: str | None = Field(default=None, max_length=50)
+    lga: str = Field(min_length=2, max_length=100)
+    ward: str | None = Field(default=None, max_length=100)
+    title: str | None = Field(default=None, max_length=100)
+
+
+class VerifierRecord(VerifierCreate):
+    id: UUID
+    is_active: bool = True

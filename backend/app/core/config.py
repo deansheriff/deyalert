@@ -15,7 +15,6 @@ class Settings(BaseSettings):
     cors_origins: str = ""
     allow_unauthenticated_dev: bool = True
     use_in_memory_store: bool = False
-    ntfy_topic: str = "dey-alert-dev"
     flag_hide_threshold: int = 5
     corroboration_threshold: int = 3
     corroboration_radius_km: float = 2.0
@@ -24,6 +23,23 @@ class Settings(BaseSettings):
     news_auto_publish: bool = False
     news_advisory_ttl_hours: int = 72
     news_cluster_radius_km: float = 25.0
+    rate_limit_per_minute: int = 120
+    sensitive_rate_limit_per_minute: int = 30
+    media_rate_limit_per_minute: int = 10
+    sos_rate_limit_per_hour: int = 3
+    trust_proxy_headers: bool = False
+    ntfy_base_url: str = ""
+    ntfy_topic: str = ""
+    ntfy_access_token: str = ""
+    media_bucket: str = "incident-media"
+    max_media_bytes: int = 10_000_000
+    sms_provider: str = "disabled"
+    sms_api_key: str = ""
+    sms_sender_id: str = "DeyAlert"
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+    metrics_token: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

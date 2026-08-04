@@ -1,17 +1,17 @@
 # syntax=docker/dockerfile:1
 
 FROM python:3.12-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:0.11.17 /uv /uvx /bin/
 
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
-
-RUN python -m venv "${VIRTUAL_ENV}"
+ENV UV_PYTHON_DOWNLOADS=0
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ENV UV_NO_CACHE=1
 
 WORKDIR /build
 COPY backend/pyproject.toml ./
+COPY backend/uv.lock ./
 COPY backend/app ./app
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+RUN uv sync --locked --no-dev --no-editable
 
 FROM python:3.12-slim AS runtime
 
@@ -33,6 +33,6 @@ USER appuser
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen(f\"http://127.0.0.1:{os.environ.get('PORT', '8000')}/health\", timeout=3)"]
+  CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen(f\"http://127.0.0.1:{os.environ.get('PORT', '8000')}/ready\", timeout=3)"]
 
 CMD ["sh", "scripts/start.sh"]

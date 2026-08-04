@@ -1,12 +1,12 @@
 # Dey Alert
 
-Dey Alert is a mobile-first, hyper-local security alert app for Nigerian communities. Phase 1 implements the core loop: report an incident, see nearby alerts on a map/feed, and inspect the verification trail.
+Dey Alert is a mobile-first, hyper-local security alert app for Nigerian communities. It supports invite-only incident reporting, reviewed security advisories, geographic verification, moderation, notifications, and an SMS-gated SOS workflow.
 
 ## Phase 1 included
 
 - Dark Nigerian-night design system: `#101815`, Nigerian green `#008751`, amber corroboration, red danger/SOS.
 - Flutter onboarding, map view, nearby feed, report form, incident detail, SOS surface, and profile settings.
-- Incident type selection, anonymous reporting, approximate location copy, media attachment affordances, corroboration/flag actions, and offline-sync messaging.
+- Incident type selection, anonymous reporting, GPS-backed location, real photo/video uploads, corroboration/flag actions, and offline sync.
 - FastAPI endpoints for incident create/list/detail, corroboration, and false-report flagging.
 - PostGIS migration with spatial index, corroboration and flag tables, and the core user/incident schema.
 - Docker Compose for the API and PostGIS.
@@ -16,18 +16,21 @@ Dey Alert is a mobile-first, hyper-local security alert app for Nigerian communi
 The app now supports the first real end-to-end slice:
 
 - Supabase email/password authentication with invite-only registration by
-  default and credential-free demo mode.
+  default and a debug-only local demo login.
 - State/LGA/ward profile setup with optional phone, alert radius, and privacy
   precision.
 - Authenticated FastAPI requests; user identity comes from the verified JWT.
 - PostGIS persistence and `ST_DWithin` proximity queries.
 - Report submission with GPS and an SQLite offline queue.
 - Automatic retry when connectivity returns.
-- Live feed data from the API with fixture fallback while the API is unavailable.
+- Live feed data from the API with truthful empty and offline error states.
 - Google Maps incident markers when a Maps key is supplied.
 - Database-backed corroboration and false-report flagging.
 - Reviewed Nigerian security-news advisories, with source attribution, trending
   ranking, and a separate blue marker layer on Google Maps.
+- Idempotent offline reports, RLS-protected Realtime reads, audited moderation,
+  scoped community verifiers, real media uploads, notification history, and an
+  SMS-gated SOS workflow with trusted contacts.
 
 ## Run the Flutter app
 
@@ -42,8 +45,8 @@ flutter run \
 ```
 
 For Android, also set the Gradle property `GOOGLE_MAPS_API_KEY`. For iOS, set
-the `GOOGLE_MAPS_API_KEY` build setting. Without these values the app uses its
-safe demo auth and stylized map fallback.
+the `GOOGLE_MAPS_API_KEY` build setting. Release builds require Maps and
+Supabase Dart defines and will stop at startup if either integration is absent.
 
 Demo auth uses `demo@deyalert.local` with password `password123`. Production
 builds default to invite-only sign-in. Set `AUTH_ALLOW_SIGN_UP=true` only after
@@ -72,7 +75,10 @@ Or use Docker Compose from the project root:
 docker compose up --build
 ```
 
-The API exposes `/health` and interactive docs at `/docs`.
+The API exposes `/health`, interactive docs at `/docs`, and an optional
+token-protected Prometheus endpoint at `/metrics`.
+`/ready` additionally verifies the database connection and is the production
+container health check.
 
 Copy `.env.example` to `.env` and configure Supabase before disabling
 `ALLOW_UNAUTHENTICATED_DEV`. The API applies the ordered SQL files in

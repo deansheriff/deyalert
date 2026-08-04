@@ -1,10 +1,10 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.core.config import get_settings
-from app.core.security import CurrentUser, get_current_user
+from app.core.security import CurrentUser, get_current_user, get_user_role
 from app.models.advisory import (
     AdvisoryList,
     AdvisoryReview,
@@ -13,6 +13,7 @@ from app.models.advisory import (
 )
 from app.models.incident import Location
 from app.services.news_service import NewsService, get_news_service
+from app.services.audit_service import record_audit
 
 router = APIRouter(tags=["security news"])
 Service = Annotated[NewsService, Depends(get_news_service)]
@@ -28,7 +29,7 @@ def require_news_admin(user: User) -> CurrentUser:
         for item in settings.news_admin_emails.split(",")
         if item.strip()
     }
-    if not user.email or user.email.lower() not in allowed:
+    if (not user.email or user.email.lower() not in allowed) and get_user_role(user) != "admin":
         raise HTTPException(status_code=403, detail="News administrator required")
     return user
 
@@ -86,6 +87,7 @@ def review_advisory(
     payload: AdvisoryReview,
     service: Service,
     admin: Admin,
+    request: Request,
 ) -> SecurityAdvisory:
     allowed = {
         AdvisoryStatus.published,
@@ -97,4 +99,12 @@ def review_advisory(
     advisory = service.review(advisory_id, payload.status, admin.id)
     if advisory is None:
         raise HTTPException(status_code=404, detail="Advisory not found")
+    record_audit(
+        actor_id=admin.id,
+        action="advisory.review",
+        entity_type="security_advisory",
+        entity_id=advisory_id,
+        metadata={"status": payload.status.value},
+        ip_address=request.client.host if request.client else None,
+    )
     return advisory

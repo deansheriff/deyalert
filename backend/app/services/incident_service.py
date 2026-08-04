@@ -52,6 +52,14 @@ class IncidentService(Protocol):
         payload: FlagRequest,
     ) -> Incident: ...
 
+    def flagged(self, limit: int = 100) -> list[Incident]: ...
+
+    def verify(self, incident_id: UUID, actor_id: UUID) -> Incident: ...
+
+    def moderate(
+        self, incident_id: UUID, status: IncidentStatus, actor_id: UUID
+    ) -> Incident: ...
+
 
 class InMemoryIncidentService:
     def __init__(self) -> None:
@@ -60,6 +68,14 @@ class InMemoryIncidentService:
         self._flaggers: dict[UUID, set[UUID]] = {}
 
     def create(self, payload: IncidentCreate, reporter_id: UUID) -> Incident:
+        for existing in self._incidents.values():
+            if (
+                payload.client_report_id is not None
+                and
+                existing.reporter_id == reporter_id
+                and existing.client_report_id == payload.client_report_id
+            ):
+                return existing
         incident = Incident(**payload.model_dump(), reporter_id=reporter_id)
         self._incidents[incident.id] = incident
         return incident
@@ -123,6 +139,29 @@ class InMemoryIncidentService:
             incident.is_hidden = True
         return incident
 
+    def flagged(self, limit: int = 100) -> list[Incident]:
+        return sorted(
+            (item for item in self._incidents.values() if item.flag_count > 0),
+            key=lambda item: item.flag_count,
+            reverse=True,
+        )[:limit]
+
+    def verify(self, incident_id: UUID, actor_id: UUID) -> Incident:
+        incident = self._require(incident_id)
+        incident.status = IncidentStatus.confirmed
+        incident.confirmed_by = actor_id
+        return incident
+
+    def moderate(
+        self, incident_id: UUID, status: IncidentStatus, actor_id: UUID
+    ) -> Incident:
+        incident = self._require(incident_id)
+        incident.status = status
+        incident.is_hidden = status == IncidentStatus.false_report
+        if status == IncidentStatus.confirmed:
+            incident.confirmed_by = actor_id
+        return incident
+
     def _require(self, incident_id: UUID) -> Incident:
         incident = self.get(incident_id)
         if not incident:
@@ -131,7 +170,7 @@ class InMemoryIncidentService:
 
 
 _SELECT_COLUMNS = """
-    id, reporter_id, type, description, location_name, lga, ward, status,
+    id, client_report_id, reporter_id, type, description, location_name, lga, ward, status,
     severity, is_anonymous, media_urls, corroboration_count, confirmed_by,
     flag_count, is_hidden, created_at, updated_at,
     ST_Y(location::geometry) AS lat,
@@ -155,13 +194,16 @@ class DatabaseIncidentService:
         statement = text(
             f"""
             INSERT INTO incidents (
-                id, reporter_id, type, description, location, location_name,
+                id, client_report_id, reporter_id, type, description, location, location_name,
                 lga, ward, severity, is_anonymous, media_urls
             ) VALUES (
-                :id, :reporter_id, :type, :description,
+                :id, :client_report_id, :reporter_id, :type, :description,
                 ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
                 :location_name, :lga, :ward, :severity, :is_anonymous, :media_urls
             )
+            ON CONFLICT (reporter_id, client_report_id)
+              WHERE client_report_id IS NOT NULL
+            DO UPDATE SET client_report_id = EXCLUDED.client_report_id
             RETURNING {_SELECT_COLUMNS}
             """
         )
@@ -358,6 +400,91 @@ class DatabaseIncidentService:
                 {
                     "incident_id": incident_id,
                     "threshold": settings.flag_hide_threshold,
+                },
+            ).one_or_none()
+            if row is None:
+                raise KeyError(str(incident_id))
+            return _row_to_incident(row)
+
+    def flagged(self, limit: int = 100) -> list[Incident]:
+        with get_session_factory()() as session:
+            rows = session.execute(
+                text(
+                    f"""
+                    SELECT {_SELECT_COLUMNS} FROM incidents
+                    WHERE flag_count > 0 OR is_hidden = true
+                    ORDER BY is_hidden DESC, flag_count DESC, updated_at DESC
+                    LIMIT :limit
+                    """
+                ),
+                {"limit": limit},
+            ).all()
+            return [_row_to_incident(row) for row in rows]
+
+    def verify(self, incident_id: UUID, actor_id: UUID) -> Incident:
+        with get_session_factory()() as session, session.begin():
+            actor = session.execute(
+                text("SELECT role FROM users WHERE id = :actor_id AND is_active = true"),
+                {"actor_id": actor_id},
+            ).scalar_one_or_none()
+            if actor not in {"verifier", "admin"}:
+                raise PermissionError("Verifier role required")
+            if actor == "verifier":
+                allowed = session.execute(
+                    text(
+                        """
+                        SELECT 1 FROM verifiers verifier
+                        JOIN incidents incident ON incident.id = :incident_id
+                        WHERE verifier.user_id = :actor_id
+                          AND verifier.is_active = true
+                          AND verifier.lga = incident.lga
+                          AND (verifier.ward IS NULL OR verifier.ward = incident.ward)
+                        """
+                    ),
+                    {"actor_id": actor_id, "incident_id": incident_id},
+                ).scalar_one_or_none()
+                if not allowed:
+                    raise PermissionError("Verifier is outside the incident area")
+            row = session.execute(
+                text(
+                    f"""
+                    UPDATE incidents SET status = 'confirmed',
+                      confirmed_by = :actor_id, confirmed_at = NOW(),
+                      is_hidden = false, updated_at = NOW()
+                    WHERE id = :incident_id
+                    RETURNING {_SELECT_COLUMNS}
+                    """
+                ),
+                {"actor_id": actor_id, "incident_id": incident_id},
+            ).one_or_none()
+            if row is None:
+                raise KeyError(str(incident_id))
+            return _row_to_incident(row)
+
+    def moderate(
+        self, incident_id: UUID, status: IncidentStatus, actor_id: UUID
+    ) -> Incident:
+        with get_session_factory()() as session, session.begin():
+            row = session.execute(
+                text(
+                    f"""
+                    UPDATE incidents SET status = :status,
+                      is_hidden = (:status = 'false_report'),
+                      resolved_at = CASE WHEN :status = 'resolved' THEN NOW()
+                                         ELSE resolved_at END,
+                      confirmed_by = CASE WHEN :status = 'confirmed'
+                                          THEN :actor_id ELSE confirmed_by END,
+                      confirmed_at = CASE WHEN :status = 'confirmed'
+                                          THEN NOW() ELSE confirmed_at END,
+                      updated_at = NOW()
+                    WHERE id = :incident_id
+                    RETURNING {_SELECT_COLUMNS}
+                    """
+                ),
+                {
+                    "actor_id": actor_id,
+                    "incident_id": incident_id,
+                    "status": status.value,
                 },
             ).one_or_none()
             if row is None:

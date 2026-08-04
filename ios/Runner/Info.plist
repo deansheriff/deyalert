@@ -6,6 +6,12 @@
 	<string>$(GOOGLE_MAPS_API_KEY)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Dey Alert uses your location to show nearby incidents and attach an approximate location to reports.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Dey Alert uses the camera only when you choose to attach incident evidence.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Dey Alert accesses selected photos or videos only when you attach incident evidence.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dey Alert uses the microphone when recording video evidence.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

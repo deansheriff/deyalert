@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../models/incident.dart';
 import 'api_service.dart';
@@ -18,9 +19,17 @@ class IncidentRepository {
   final DeyAlertApi _api;
   final OfflineQueue _queue;
 
+  bool _isConnectivityFailure(DioException error) => switch (error.type) {
+    DioExceptionType.connectionError ||
+    DioExceptionType.connectionTimeout ||
+    DioExceptionType.receiveTimeout ||
+    DioExceptionType.sendTimeout => true,
+    _ => false,
+  };
+
   Future<List<Incident>> loadNearby({
-    double lat = 6.6018,
-    double lng = 3.3515,
+    required double lat,
+    required double lng,
     double radiusKm = 5,
   }) async {
     try {
@@ -29,17 +38,19 @@ class IncidentRepository {
         lng: lng,
         radiusKm: radiusKm,
       );
-      return incidents.isEmpty ? demoIncidents : incidents;
+      return incidents;
     } on DioException {
-      return demoIncidents;
+      rethrow;
     }
   }
 
   Future<SubmissionResult> submit(Map<String, dynamic> payload) async {
+    payload.putIfAbsent('client_report_id', () => const Uuid().v4());
     try {
       final incident = await _api.createIncident(payload);
       return SubmissionResult(queued: false, incident: incident);
-    } on DioException {
+    } on DioException catch (error) {
+      if (!_isConnectivityFailure(error)) rethrow;
       await _queue.enqueue(payload);
       return const SubmissionResult(queued: true);
     }
@@ -52,7 +63,12 @@ class IncidentRepository {
           Map<String, dynamic>.from(item['payload'] as Map),
         );
         await _queue.remove(item['id'] as int);
-      } on DioException {
+      } on DioException catch (error) {
+        final status = error.response?.statusCode;
+        if (status != null && status >= 400 && status < 500 && status != 401) {
+          await _queue.remove(item['id'] as int);
+          continue;
+        }
         return;
       }
     }

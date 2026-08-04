@@ -1,4 +1,4 @@
-package com.deyalert.dey_alert
+package com.deyalert.app
 
 import io.flutter.embedding.android.FlutterActivity
 

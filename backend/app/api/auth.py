@@ -25,4 +25,7 @@ def update_profile(
     user: User,
     profiles: Profiles,
 ) -> UserProfile:
-    return profiles.upsert(user, payload)
+    try:
+        return profiles.upsert(user, payload)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AppConfig {
@@ -21,9 +22,17 @@ class AppConfig {
   static bool get hasSupabase =>
       supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;
   static bool get hasGoogleMaps => googleMapsApiKey.isNotEmpty;
-  static bool get isDemoMode => !hasSupabase;
+  static bool get isDemoMode => !hasSupabase && !kReleaseMode;
 
   static Future<void> initialize() async {
+    if (kReleaseMode && !hasSupabase) {
+      throw StateError(
+        'Release builds require SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.',
+      );
+    }
+    if (kReleaseMode && !hasGoogleMaps) {
+      throw StateError('Release builds require GOOGLE_MAPS_API_KEY.');
+    }
     if (!hasSupabase) return;
     await Supabase.initialize(
       url: supabaseUrl,

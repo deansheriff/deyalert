@@ -19,6 +19,8 @@ dependencies = [
   "geoalchemy2>=0.15.0",
   "alembic>=1.14.0",
   "psycopg[binary]>=3.2.0",
+  "python-multipart>=0.0.20",
+  "prometheus-client>=0.22.0",
 ]
 
 [dependency-groups]

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 
 from app.core.security import CurrentUser, get_current_user
 from app.models.incident import (
@@ -14,6 +14,8 @@ from app.models.incident import (
     Location,
 )
 from app.services.incident_service import IncidentService, get_incident_service
+from app.services.audit_service import record_audit
+from app.services.notification_service import dispatch_incident_notification
 
 router = APIRouter(prefix="/incidents", tags=["incidents"])
 Service = Annotated[IncidentService, Depends(get_incident_service)]
@@ -25,8 +27,20 @@ def create_incident(
     payload: IncidentCreate,
     service: Service,
     user: User,
+    request: Request,
+    background_tasks: BackgroundTasks,
 ) -> Incident:
-    return service.create(payload, reporter_id=user.id)
+    incident = service.create(payload, reporter_id=user.id)
+    record_audit(
+        actor_id=user.id,
+        action="incident.create",
+        entity_type="incident",
+        entity_id=incident.id,
+        metadata={"client_report_id": str(payload.client_report_id)},
+        ip_address=request.client.host if request.client else None,
+    )
+    background_tasks.add_task(dispatch_incident_notification, incident)
+    return incident
 
 
 @router.get("", response_model=IncidentList)
@@ -64,9 +78,18 @@ def corroborate(
     payload: CorroborateRequest,
     service: Service,
     user: User,
+    request: Request,
 ) -> Incident:
     try:
-        return service.corroborate(incident_id, user.id, payload)
+        incident = service.corroborate(incident_id, user.id, payload)
+        record_audit(
+            actor_id=user.id,
+            action="incident.corroborate",
+            entity_type="incident",
+            entity_id=incident_id,
+            ip_address=request.client.host if request.client else None,
+        )
+        return incident
     except KeyError:
         raise HTTPException(status_code=404, detail="Incident not found") from None
     except ValueError as error:
@@ -79,8 +102,18 @@ def flag(
     payload: FlagRequest,
     service: Service,
     user: User,
+    request: Request,
 ) -> Incident:
     try:
-        return service.flag(incident_id, user.id, payload)
+        incident = service.flag(incident_id, user.id, payload)
+        record_audit(
+            actor_id=user.id,
+            action="incident.flag",
+            entity_type="incident",
+            entity_id=incident_id,
+            metadata={"reason": payload.reason},
+            ip_address=request.client.host if request.client else None,
+        )
+        return incident
     except KeyError:
         raise HTTPException(status_code=404, detail="Incident not found") from None

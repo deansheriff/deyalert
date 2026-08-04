@@ -1,11 +1,11 @@
 {
-    "name": "dey_alert",
-    "short_name": "dey_alert",
+    "name": "Dey Alert",
+    "short_name": "Dey Alert",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#07131F",
+    "theme_color": "#07131F",
+    "description": "Hyper-local community security alerts for Nigeria.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

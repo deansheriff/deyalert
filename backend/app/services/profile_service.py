@@ -66,6 +66,19 @@ class DatabaseProfileService:
         values = payload.model_dump()
         values.update({"id": user.id, "email": user.email})
         with get_session_factory()() as session, session.begin():
+            area_exists = session.execute(
+                text(
+                    """
+                    SELECT 1 FROM lga_wards
+                    WHERE LOWER(state) = LOWER(:state)
+                      AND LOWER(lga) = LOWER(:lga)
+                      AND LOWER(ward) = LOWER(:ward)
+                    """
+                ),
+                values,
+            ).scalar_one_or_none()
+            if not area_exists:
+                raise ValueError("Select a configured pilot state, LGA, and ward")
             row = session.execute(statement, values).one()
             return UserProfile.model_validate(dict(row._mapping))
 

@@ -86,3 +86,33 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",
         ) from error
+
+
+def get_user_role(user: CurrentUser) -> str:
+    settings = get_settings()
+    if settings.allow_unauthenticated_dev and user.id == DEMO_USER_ID:
+        return "admin"
+    from sqlalchemy import text
+
+    from app.core.database import get_session_factory
+
+    with get_session_factory()() as session:
+        role = session.execute(
+            text("SELECT role FROM users WHERE id = :user_id AND is_active = true"),
+            {"user_id": user.id},
+        ).scalar_one_or_none()
+    if not role:
+        raise HTTPException(status_code=403, detail="Active profile required")
+    return str(role)
+
+
+def require_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    if get_user_role(user) != "admin":
+        raise HTTPException(status_code=403, detail="Administrator required")
+    return user
+
+
+def require_verifier(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    if get_user_role(user) not in {"verifier", "admin"}:
+        raise HTTPException(status_code=403, detail="Verifier required")
+    return user

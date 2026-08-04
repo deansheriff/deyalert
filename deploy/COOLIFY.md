@@ -75,7 +75,7 @@ add the verification UI and connect a supported SMS provider before
    - Base directory: `/`
    - Dockerfile location: `/Dockerfile`
    - Port: `8000`
-   - Health-check path: `/health`
+   - Health-check path: `/ready`
 4. Assign `https://api.example.com`.
 5. Enable **Connect to Predefined Network**.
 6. Add the following application environment variables:
@@ -95,6 +95,23 @@ NEWS_ADMIN_EMAILS=admin@example.com
 NEWS_AUTO_PUBLISH=false
 NEWS_ADVISORY_TTL_HOURS=72
 NEWS_CLUSTER_RADIUS_KM=25
+RATE_LIMIT_PER_MINUTE=120
+SENSITIVE_RATE_LIMIT_PER_MINUTE=30
+MEDIA_RATE_LIMIT_PER_MINUTE=10
+SOS_RATE_LIMIT_PER_HOUR=3
+TRUST_PROXY_HEADERS=true
+MEDIA_BUCKET=incident-media
+MAX_MEDIA_BYTES=10000000
+NTFY_BASE_URL=https://ntfy.example.com
+NTFY_TOPIC=dey-alert
+NTFY_ACCESS_TOKEN=replace-with-a-publish-only-token
+SMS_PROVIDER=disabled
+SMS_API_KEY=
+SMS_SENDER_ID=DeyAlert
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=
+METRICS_TOKEN=generate-a-long-random-secret
 ```
 
 Important:
@@ -109,6 +126,24 @@ Important:
 
 Deploy the application. On every container start it waits for PostgreSQL and
 applies any unapplied SQL files in `backend/migrations` before starting Uvicorn.
+
+In Supabase Studio, create a public Storage bucket named `incident-media` with
+a 10 MB object limit and only JPEG, PNG, WebP, MP4 and QuickTime MIME types.
+The client never receives the service-role key; uploads pass through FastAPI,
+which validates size/type and writes an audit event.
+
+Deploy a self-hosted ntfy service and set `NTFY_BASE_URL`/`NTFY_TOPIC` for
+area-topic publishing. Configure ntfy deny-by-default access, give the API a
+publish-only token through `NTFY_ACCESS_TOKEN`, and give pilot members read-only
+access to their area topic. Foreground app updates also use Supabase Realtime;
+pilot background delivery uses the open-source ntfy mobile app subscribed to
+that protected topic.
+
+Keep `SMS_PROVIDER=disabled` until a Termii or Twilio account has been tested.
+SOS remains visibly unavailable while SMS is disabled or the user has no
+trusted contacts. For Termii, set `SMS_PROVIDER=termii`, `SMS_API_KEY`, and
+`SMS_SENDER_ID`. For Twilio, set `SMS_PROVIDER=twilio` plus the three
+`TWILIO_*` values.
 
 ## 5. Configure security-news ingestion
 
@@ -171,6 +206,7 @@ Google Cloud console.
 
 ```bash
 curl https://api.example.com/health
+curl https://api.example.com/ready
 curl https://supabase.example.com/auth/v1/health
 ```
 
@@ -187,5 +223,16 @@ marker.
 - Back up Supabase Storage volumes if incident media is stored locally.
 - Keep Coolify, Supabase images, and the server OS patched.
 - Monitor disk space, Postgres health, API health, and SMS delivery errors.
+- Scrape `/metrics` with Prometheus using `Authorization: Bearer <METRICS_TOKEN>`
+  and alert on elevated 5xx responses or latency. Leave `METRICS_TOKEN` empty
+  to disable the endpoint if it cannot be kept private.
 - Never expose Studio without a strong password and HTTPS.
 - Never expose PostgreSQL publicly unless there is no private-network option.
+- Run `deploy/scripts/backup_postgres.sh` daily from a host with PostgreSQL
+  client tools and upload the resulting dump to off-server encrypted storage.
+- Run `deploy/scripts/verify_restore.sh` against an isolated restore database
+  at least monthly and after every schema change.
+- Run `deploy/scripts/backup_storage.sh` against the mounted Supabase Storage
+  object directory and copy the archive off-server. Verify it with
+  `deploy/scripts/verify_storage_restore.sh` on the same schedule.
+- Follow `deploy/PILOT_RUNBOOK.md` before enabling any invited account.

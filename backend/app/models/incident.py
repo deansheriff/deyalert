@@ -37,6 +37,7 @@ class Location(BaseModel):
 
 
 class IncidentCreate(BaseModel):
+    client_report_id: UUID = Field(default_factory=uuid4)
     type: IncidentType
     description: str | None = Field(default=None, max_length=2000)
     location: Location
@@ -52,6 +53,7 @@ class Incident(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID = Field(default_factory=uuid4)
+    client_report_id: UUID | None = None
     reporter_id: UUID | None = None
     type: IncidentType
     description: str | None = None
@@ -84,3 +86,8 @@ class FlagRequest(BaseModel):
 class IncidentList(BaseModel):
     items: list[Incident]
     total: int
+
+
+class ModerationRequest(BaseModel):
+    status: IncidentStatus
+    notes: str | None = Field(default=None, max_length=1000)

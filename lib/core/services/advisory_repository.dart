@@ -11,15 +11,15 @@ class AdvisoryRepository {
   Future<List<SecurityAdvisory>> loadTrending() async {
     try {
       final advisories = await _api.trendingNews();
-      return advisories.isEmpty ? demoAdvisories : advisories;
+      return advisories;
     } on DioException {
-      return demoAdvisories;
+      rethrow;
     }
   }
 
   Future<List<SecurityAdvisory>> loadNearby({
-    double lat = 6.6018,
-    double lng = 3.3515,
+    required double lat,
+    required double lng,
     double radiusKm = 50,
   }) async {
     try {
@@ -28,9 +28,9 @@ class AdvisoryRepository {
         lng: lng,
         radiusKm: radiusKm,
       );
-      return advisories.isEmpty ? demoAdvisories : advisories;
+      return advisories;
     } on DioException {
-      return demoAdvisories;
+      rethrow;
     }
   }
 }

@@ -15,6 +15,8 @@ class Incident {
     required this.createdAt,
     this.distanceKm,
     this.corroborationCount = 0,
+    this.flagCount = 0,
+    this.mediaUrls = const [],
   });
 
   final String id;
@@ -28,6 +30,8 @@ class Incident {
   final DateTime createdAt;
   final double? distanceKm;
   final int corroborationCount;
+  final int flagCount;
+  final List<String> mediaUrls;
 
   String get displayType => switch (type) {
     'armed_robbery' => 'Armed robbery',
@@ -94,53 +98,13 @@ class Incident {
           DateTime.now().toUtc(),
       distanceKm: (json['distance_km'] as num?)?.toDouble(),
       corroborationCount: json['corroboration_count'] as int? ?? 0,
+      flagCount: json['flag_count'] as int? ?? 0,
+      mediaUrls: (json['media_urls'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(),
     );
   }
 
   static String _prepositionFor(String type) =>
       type == 'fire_outbreak' || type == 'suspicious_activity' ? 'near' : 'on';
 }
-
-final demoIncidents = <Incident>[
-  Incident(
-    id: '10000000-0000-4000-8000-000000000001',
-    type: 'roadblock',
-    description:
-        'Police checkpoint causing heavy traffic buildup. Use Opebi Road as an alternative.',
-    locationName: 'Allen Avenue, Ikeja',
-    lat: 6.6018,
-    lng: 3.3515,
-    status: 'corroborated',
-    severity: 'medium',
-    createdAt: DateTime.now().toUtc().subtract(const Duration(minutes: 15)),
-    distanceKm: 1.2,
-    corroborationCount: 3,
-  ),
-  Incident(
-    id: '10000000-0000-4000-8000-000000000002',
-    type: 'suspicious_activity',
-    description:
-        'Two people seen following commuters near the west entrance. Stay in groups.',
-    locationName: 'Computer Village, Ikeja',
-    lat: 6.6011,
-    lng: 3.3421,
-    status: 'unconfirmed',
-    severity: 'medium',
-    createdAt: DateTime.now().toUtc().subtract(const Duration(minutes: 45)),
-    distanceKm: 2.4,
-  ),
-  Incident(
-    id: '10000000-0000-4000-8000-000000000003',
-    type: 'fire_outbreak',
-    description:
-        'Fire service is on the scene. Avoid the market road until the area is cleared.',
-    locationName: 'Ikeja Market',
-    lat: 6.5964,
-    lng: 3.3419,
-    status: 'confirmed',
-    severity: 'high',
-    createdAt: DateTime.now().toUtc().subtract(const Duration(hours: 2)),
-    distanceKm: 3.1,
-    corroborationCount: 5,
-  ),
-];

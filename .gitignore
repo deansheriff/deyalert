@@ -45,3 +45,16 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets and release credentials
+.env
+.env.*
+!.env.example
+!.env.staging.example
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+android/key.properties
+ios/Flutter/Secrets.xcconfig
+service-account*.json
